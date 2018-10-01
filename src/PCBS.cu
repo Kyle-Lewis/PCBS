@@ -32,31 +32,37 @@ cudaError_t gpuErrchk(cudaError_t result){
 /*
  *
  *
+ * All references to LDA in the typical documentation are the same as rows here.
  */
 extern "C"
-void Static_PCBS(int width, 
-		  		 int height,
-		  		 int cols,					// e.g. number of frames
-		  		 float* modelFrames,
-		  		 float* targetFrame)
+void SVD(int width, 
+  		 int height,
+  		 int cols,					// e.g. number of frames
+  		 float* modelFrames,
+  		 float* targetFrame)
 {
-	// The flattened frames preceeding the target frame comprise the Matrix A 
-	// in the typical A = U x Sigma x VH ... SVD equation. 
-	float* dA; 
 	int rows = width*height;
+	float* hS;			// Host array for 
+	float* dA; 			// Device ptr to Matrix A in the typical A = U x Sigma x VH ... SVD equation. 
+	float* dU;
+	float* dV;
+	float* dS;
+	int work;
+	float* devWork;
+	int *devInfo;
+
+	// The flattened frames preceeding the target frame 
 	gpuErrchk(cudaMalloc(&dA, rows*cols*sizeof(float)));
-	gpuErrchk(cudaMemcpy(&dA, modelFrames, rows*cols*sizeof(float), cudaMemcpyHostToDevice));
+	gpuErrchk(cudaMemcpy(dA, modelFrames, rows*cols*sizeof(float), cudaMemcpyHostToDevice));
 
 	// The host space for storing the singular values, which we want to check against 
-	float *hS;
+	 = (float*)malloc(std::min(rows, cols)*sizeof(float));
 
 	// The device space for storing the Singular Vectors (columns of U and V)
 	// as well as the Singular Values (S is just the diagonals of the Sigma matrix)
-	float *dU;
-	float *dV;
-	float *dS;
-	gpuErrchk(cudaMalloc(&dU, rows*sizeof(float))); // Unitary numRows X numRows matrix
-	gpuErrchk(cudaMalloc(&dV, cols*sizeof(float))); // 
+
+	gpuErrchk(cudaMalloc(&dU, rows*rows*sizeof(float))); // Unitary numRows X numRows matrix
+	gpuErrchk(cudaMalloc(&dV, rows*cols*sizeof(float))); // 
 	gpuErrchk(cudaMalloc(&dS, std::min(rows, cols)*sizeof(float)));
 
 	// Create solver instance
@@ -64,17 +70,15 @@ void Static_PCBS(int width,
 	cusolverDnCreate(&solverHandle);
 
 	// Get/allocate the amount of working space required for the algorithm through the API 
-	int work;
 	cusolverDnDgesvd_bufferSize(solverHandle, rows, cols, &work);
-	float* devWork;
 	gpuErrchk(cudaMalloc(&devWork, work * sizeof(float)));
+	gpuErrchk(cudaDeviceSynchronize());
 
 	// To check success. 
-	int *devInfo;
 	gpuErrchk(cudaMalloc(&devInfo, sizeof(int)));
 
 	// Call it 
-	cusolverDnSgesvd(solverHandle,
+	auto error = cusolverDnSgesvd(solverHandle,
 				     'A', 'A',
 				     rows,
 				     cols,
@@ -90,8 +94,13 @@ void Static_PCBS(int width,
 				     NULL,
 				     devInfo);
 
+	gpuErrchk(cudaDeviceSynchronize());
+	std::cout << "happened" << std::endl;
+
 	int hostInfo = 0;
 	gpuErrchk(cudaMemcpy(&hostInfo, devInfo, sizeof(int), cudaMemcpyDeviceToHost));
+	std::cout << "happened" << hostInfo << std::endl;
+
 	if (hostInfo != 0) 
 	{
 		std::cout << "SVD device execution failed" << std::endl;
@@ -106,6 +115,7 @@ void Static_PCBS(int width,
 	}
 
 	// Free stuff
+	// TODO manage this python side, we need them later.
     if (dA      ) cudaFree(dA);
     if (dS      ) cudaFree(dS);
     if (dU      ) cudaFree(dU);

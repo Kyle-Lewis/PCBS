@@ -7,7 +7,7 @@ int main()
 {
 	int width = 128;
 	int height = 128;
-	int nFrames = 11;
+	int nFrames = 10;
 
 	float* frames = (float*)malloc(nFrames*width*height*sizeof(float));
 	#define pidx width*height*fidx + height*row + col
@@ -52,7 +52,9 @@ int main()
 		}
 	}
 
-	float* testFrame = frames + 10*width*height*sizeof(float);
+	float* testFrame = (float*)malloc(width*height*sizeof(float));
+	memcpy(testFrame, frames + 8*width*height, sizeof(float));
+	//float* testFrame = frames + 10*width*height*sizeof(float);
 
 	Static_PCBS(width, height, nFrames-1, frames, testFrame);
 
